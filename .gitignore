@@ -1,0 +1,162 @@
+# =========================
+
+# Python
+
+# =========================
+
+**pycache**/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# =========================
+
+# Virtual Environment
+
+# =========================
+
+.venv/
+venv/
+env/
+ENV/
+.env/
+.python-version
+
+# =========================
+
+# Testing
+
+# =========================
+
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# =========================
+
+# Type checking / Linters
+
+# =========================
+
+.mypy_cache/
+.pyre/
+.ruff_cache/
+.pytype/
+
+# =========================
+
+# IDEs / Editors
+
+# =========================
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =========================
+
+# Jupyter
+
+# =========================
+
+.ipynb_checkpoints/
+
+# =========================
+
+# Build / Packaging
+
+# =========================
+
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+wheels/
+
+# PyInstaller
+
+*.manifest
+*.spec
+
+# =========================
+
+# Windows
+
+# =========================
+
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# =========================
+
+# Logs
+
+# =========================
+
+*.log
+logs/
+
+# =========================
+
+# Temporary files
+
+# =========================
+
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# =========================
+
+# Project generated files
+
+# =========================
+
+*.pyc
+**pycache**/
+.pytest_cache/
+
+# =========================
+
+# Local configuration
+
+# =========================
+
+# Descomente se config.json contiver configurações
+
+# específicas da máquina/usuário.
+
+# config.local.json
+
+# =========================
+
+# OS / IDE metadata
+
+# =========================
+
+.DS_Store
+.vscode/
+.idea/
+
+# =========================
+
+# Generated ZIP files
+
+# =========================
+
+*.zip
