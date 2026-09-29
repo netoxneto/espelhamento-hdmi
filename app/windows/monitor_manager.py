@@ -1,35 +1,43 @@
-"""Enumeração de monitores Win32; não altera a configuração do Windows."""
-import ctypes
-from ctypes import wintypes
+"""Enumeração de monitores físicos/lógicos do Windows via pywin32."""
+from __future__ import annotations
 
-user32 = ctypes.windll.user32
+import logging
 
-class RECT(ctypes.Structure):
-    _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG),
-                ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
+logger = logging.getLogger(__name__)
 
-class MONITORINFOEXW(ctypes.Structure):
-    _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", RECT),
-                ("rcWork", RECT), ("dwFlags", wintypes.DWORD),
-                ("szDevice", wintypes.WCHAR * 32)]
-
-MONITORINFOF_PRIMARY = 1
 
 def list_monitors():
+    """Retorna os monitores disponíveis no Windows.
+
+    Cada item contém coordenadas virtuais, resolução, dispositivo e indicação
+    de monitor principal. Usa pywin32 porque ele já faz parte das dependências
+    do projeto e evita diferenças de assinatura ctypes entre versões do Windows.
+    """
+    try:
+        import win32api
+    except ImportError as exc:
+        raise RuntimeError(
+            "pywin32 não está instalado. Execute install.bat novamente."
+        ) from exc
+
     found = []
-    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HMONITOR,
-                                        wintypes.HDC, ctypes.POINTER(RECT), wintypes.LPARAM)
-    def callback(handle, _hdc, _rect, _data):
-        info = MONITORINFOEXW()
-        info.cbSize = ctypes.sizeof(info)
-        if user32.GetMonitorInfoW(handle, ctypes.byref(info)):
-            r = info.rcMonitor
-            found.append({
-                "name": info.szDevice,
-                "left": r.left, "top": r.top,
-                "width": r.right-r.left, "height": r.bottom-r.top,
-                "primary": bool(info.dwFlags & MONITORINFOF_PRIMARY)
-            })
-        return True
-    user32.EnumDisplayMonitors(0, 0, callback_type(callback), 0)
+    for handle, _hdc, _rect in win32api.EnumDisplayMonitors():
+        info = win32api.GetMonitorInfo(handle)
+        left, top, right, bottom = info["Monitor"]
+        flags = int(info.get("Flags", 0))
+        found.append(
+            {
+                "name": info.get("Device") or f"MONITOR_{len(found) + 1}",
+                "left": int(left),
+                "top": int(top),
+                "width": int(right - left),
+                "height": int(bottom - top),
+                "primary": bool(flags & 1),
+            }
+        )
+
+    found.sort(key=lambda m: (not m["primary"], m["left"], m["top"], m["name"]))
+    logger.info("Monitores encontrados: %d", len(found))
+    for monitor in found:
+        logger.info("Monitor: %s %sx%s primary=%s", monitor["name"], monitor["width"], monitor["height"], monitor["primary"])
     return found

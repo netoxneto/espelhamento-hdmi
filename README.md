@@ -1,657 +1,216 @@
-# Espelhamento HDMI
+# Espelhamento HDMI (Windows 11)
 
-Aplicação para **Windows 11 x64** desenvolvida em Python para capturar uma janela de aplicativo e exibi-la em **tela cheia em um segundo monitor/TV conectado via HDMI**, mantendo o Windows no modo **Estender**.
+Projeto inicial para selecionar uma janela do Windows e exibi-la em tela cheia em um monitor/TV HDMI configurado em **Estender**. Não usa OBS, rede, Chromecast ou captura de desktop recortada.
 
-O projeto utiliza **Windows Graphics Capture** para realizar a captura da janela e **PySide6** para renderizar o conteúdo capturado em uma janela fullscreen no monitor escolhido.
+## Estado real da implementação
 
-## ✨ Funcionalidades
+**Importante: esta entrega é um protótipo inicial, não uma versão integralmente concluída nem validada em hardware Windows.**
+- Enumeração de monitores Win32: implementada.
+- Listagem de janelas visíveis com título, HWND e PID: implementada.
+- Saída sem bordas em tela cheia, proporção preservada: implementada no Qt.
+- Captura de vídeo: integração com `windows-capture`/Windows Graphics Capture incluída, mas a API de frame-buffer pode variar entre versões e precisa ser validada no Windows de destino.
+- Bloqueio do cursor com `ClipCursor` e atalho Ctrl+Alt+F12: implementação inicial; teste o desbloqueio antes de uso prolongado.
+- Áudio por processo via WASAPI Process Loopback: **não implementado ainda**. O programa não finge capturar áudio nem transmite áudio global.
+- Tratamento avançado de janela minimizada, reconexão HDMI e recuperação de captura: ainda precisa ser concluído.
+- Os testes listados abaixo são um plano de testes; não afirmam que foram executados.
 
-* 🖥️ Seleção do monitor de saída.
-* 🪟 Seleção da janela que será transmitida.
-* 📺 Exibição em tela cheia no segundo monitor/TV.
-* 🔄 Troca da janela transmitida sem fechar o programa.
-* 🖱️ Bloqueio físico do mouse no monitor principal.
-* ⌨️ Atalhos de teclado para controlar a transmissão.
-* 🔒 Controle de concorrência durante a troca de captura.
-* ♻️ Recuperação automática em caso de falha ao iniciar uma nova captura.
-* 🧹 Encerramento seguro dos recursos de captura.
-* 🧪 Testes automatizados para os cenários críticos de troca de janela.
-* 🪟 Utilização do `HWND` da janela quando disponível.
-* ⚡ Captura através da API Windows Graphics Capture.
+## Requisitos
 
----
+- Windows 11 x64.
+- Python 3.11, 3.12 ou 3.13 x64.
+- TV conectada por HDMI.
+- O modo de exibição do Windows deve estar em **Estender**.
 
-## 🖼️ Funcionamento
+## Instalação
 
-O fluxo básico da aplicação é:
+1. Instale Python x64 a partir de https://www.python.org/downloads/windows/ e marque **Add python.exe to PATH**.
+2. Extraia esta pasta em um local gravável.
+3. Execute `install.bat`.
+4. Se a instalação falhar, leia a mensagem completa no terminal; o instalador não suprime erros.
 
-```text
-┌──────────────────────┐
-│   Aplicação Windows  │
-│   (janela escolhida) │
-└──────────┬───────────┘
-           │
-           │ Windows Graphics Capture
-           ▼
-┌──────────────────────┐
-│   CaptureSession     │
-│                      │
-│ - Controle da captura│
-│ - Troca de janela    │
-│ - Controle de estado │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│   FullscreenOutput   │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│ Monitor / TV HDMI    │
-│      Tela cheia      │
-└──────────────────────┘
-```
+## Configurar a TV
 
-O Windows deve estar configurado no modo:
+1. Conecte o HDMI.
+2. Pressione `Win + P`.
+3. Selecione **Estender**.
+4. Em Configurações > Sistema > Tela, identifique a TV e ajuste a posição relativa dos monitores se necessário.
+5. Não altere a resolução para usar este protótipo; a janela de saída usa as dimensões detectadas do monitor.
 
-**Configurações → Sistema → Tela → Estender estas telas**
+## Executar
 
----
+Execute `run.bat`, selecione o monitor da TV e depois a janela. Use `Ctrl+C` no terminal para solicitar encerramento.
 
-# 📋 Requisitos
+## Atalhos
 
-## Sistema operacional
+O bloqueio do mouse usa `ClipCursor` e um watchdog independente do terminal, reaplicando o retângulo do monitor principal a cada 50 ms. Minimizar o terminal ou mudar o foco não deve liberar o cursor.
 
-* Windows 11 x64
-* Dois monitores ou uma TV conectada via HDMI
-* Windows configurado em modo **Estender**
 
-## Python
+- `Ctrl+Alt+F12`: alterna o confinamento do cursor ao monitor principal, se o registro do atalho global for aceito.
+- `Ctrl+C` no terminal: solicita encerramento. Ao fechar normalmente, o código chama `ClipCursor(NULL)`.
 
-Recomendado:
+**Cuidado:** se o processo for encerrado à força, o Windows normalmente libera o clip ao terminar o processo, mas não dependa disso como mecanismo de segurança. Teste primeiro e mantenha acesso ao teclado.
 
-```text
-Python 3.11+
-```
+## Gerar executável
 
-Verifique sua versão:
+Execute `build.bat` depois da instalação. O resultado esperado fica em `dist\EspelhamementoHDMI.exe` (confira o nome real produzido). O executável e a captura precisam ser validados em uma máquina Windows 11 limpa.
 
-```bash
-python --version
-```
+## Plano de testes
 
----
+Marque cada item somente depois de testar em Windows 11:
+- [ ] Chrome
+- [ ] Edge
+- [ ] PowerPoint
+- [ ] Bloco de Notas
+- [ ] Windows Explorer
+- [ ] Aplicativo Python
+- [ ] Aplicativo Electron
+- [ ] Redimensionamento e maximização
+- [ ] Minimização e restauração
+- [ ] Fechamento da janela
+- [ ] Desconexão/reconexão da TV
+- [ ] Áudio do processo selecionado (não suportado nesta versão)
+- [ ] Bloqueio e desbloqueio do cursor
+- [ ] Encerramento normal e forçado
 
-# 📦 Instalação
+## Limitações conhecidas
 
-Clone o repositório:
+1. A API de `windows-capture` e a forma de expor os buffers podem variar por versão. Se `frame.frame_buffer` não estiver disponível, a captura falhará explicitamente; não existe fallback para captura da tela inteira.
+2. O áudio por processo requer integração WASAPI Process Loopback e não está implementado nesta versão.
+3. A captura de janelas minimizadas depende do comportamento do Windows Graphics Capture; a recuperação automática ainda precisa de trabalho.
+4. A interface é um protótipo CLI + janela de saída. Não é um serviço e não deve ser executada com privilégios administrativos.
+5. A instalação de pacotes pode falhar se não houver wheel compatível para a versão do Python. Use Python x64 3.11–3.13.
 
-```bash
-git clone https://github.com/SEU-USUARIO/espelhamento-hdmi.git
-```
+## Estrutura
 
-Entre na pasta:
+- `app/windows`: enumeração de monitores e janelas.
+- `app/video`: sessão de captura e renderização.
+- `app/audio`: pontos de integração de áudio, com limitações explicitadas.
+- `app/input`: confinamento do cursor.
+- `app/config`: leitura de configuração.
 
-```bash
-cd espelhamento-hdmi
-```
+## Próxima fase necessária para uma versão de produção
 
-Opcionalmente, crie um ambiente virtual:
+- Fixar e testar uma versão exata de `windows-capture` e adaptar o callback ao formato real dos frames.
+- Implementar WASAPI Process Loopback para o PID escolhido e roteamento ao endpoint HDMI selecionado.
+- Implementar controle de ciclo de vida da janela capturada, janelas minimizadas, desconexões e recuperação.
+- Criar testes de integração reais no Windows 11, inclusive monitor com DPI diferente.
 
-```bash
-python -m venv .venv
-```
+## Trocar a janela durante a transmissão
 
-Ative o ambiente virtual:
+A transmissão agora permanece aberta enquanto a janela capturada é trocada.
 
-### Windows CMD
-
-```cmd
-.venv\Scripts\activate
-```
-
-### PowerShell
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-Instale as dependências:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-# ▶️ Executando
-
-A forma mais simples é executar:
-
-```bash
-python app/main.py
-```
-
-Também é possível utilizar o script:
-
-```cmd
-run.bat
-```
-
----
-
-# 🎮 Controles
-
-Depois que a aplicação estiver transmitindo:
-
-| Tecla              | Função                             |
-| ------------------ | ---------------------------------- |
-| `T`                | Trocar a janela transmitida        |
-| `L`                | Ativar/desativar bloqueio do mouse |
-| `Ctrl + Alt + F12` | Ativar/desativar bloqueio do mouse |
-| `Q`                | Encerrar a aplicação               |
-| `0`                | Encerrar a aplicação               |
-
-## 🔄 Trocando a janela
-
-Durante a transmissão, pressione:
+No terminal da aplicação:
 
 ```text
 T
 ```
 
-A aplicação exibirá a lista de janelas disponíveis.
+O programa lista novamente as janelas e você escolhe outra. A saída na TV continua sendo a mesma; somente a captura WGC é encerrada e uma nova captura da janela escolhida é iniciada.
 
-Digite o número correspondente à janela desejada.
-
-A captura atual será encerrada antes que a nova captura seja iniciada.
-
-A janela fullscreen do monitor de saída permanece aberta durante a troca.
-
----
-
-# 🖱️ Bloqueio do mouse
-
-Quando ativado, o cursor fica fisicamente limitado à área do monitor principal.
-
-O bloqueio utiliza a API Win32:
+Exemplo:
 
 ```text
-ClipCursor
+Comandos: [T] trocar janela  [L] mouse bloqueado/liberado  [Q] encerrar
+> T
+
+Janelas disponíveis:
+[1] Google Chrome  (PID 1234)
+[2] PowerPoint  (PID 5678)
+[3] Visual Studio Code  (PID 9012)
+
+Digite o número da nova janela: 2
+
+Transmitindo agora: PowerPoint (PID 5678)
 ```
 
-Além disso, existe um watchdog que verifica periodicamente o estado do cursor e reaplica a restrição.
+Não é necessário fechar e abrir o programa.
 
-Isso evita que o mouse escape para o segundo monitor quando, por exemplo:
+## Bloqueio real do mouse
 
-* o terminal é minimizado;
-* outra janela recebe foco;
-* o usuário muda de aplicativo;
-* o terminal deixa de estar ativo.
+O bloqueio usa a API Win32 `ClipCursor`. Isso **não é apenas ocultação do cursor**.
 
-O atalho global:
+Enquanto estiver bloqueado, o Windows restringe fisicamente a posição do cursor ao retângulo do monitor principal. Portanto, mesmo que a TV esteja ao lado do monitor no modo **Estender**, o ponteiro não consegue atravessar para ela.
+
+`Ctrl+Alt+F12` alterna entre:
+
+```text
+BLOQUEADO → LIBERADO → BLOQUEADO
+```
+
+Ao encerrar a aplicação, `ClipCursor(NULL)` é chamado para restaurar o comportamento normal.
+
+### Observação importante
+
+O atalho de emergência existe justamente para evitar ficar sem acesso ao cursor. Recomenda-se testar `Ctrl+Alt+F12` antes de usar o programa em uma apresentação.
+
+## Segurança da troca de janela
+
+A sessão de captura usa uma máquina de estados (`STOPPED`, `STARTING`, `RUNNING`, `SWITCHING`, `STOPPING`, `FAILED`, `CLOSED`), um lock curto para o estado compartilhado e um lock separado para serializar `start`, `switch` e `stop`.
+
+A nova `WindowsCapture` é registrada como captura atual **antes** de `start_free_threaded()`, porque o callback de frame pode ocorrer antes de essa chamada retornar. A geração da sessão invalida callbacks atrasados da captura anterior, e `control.wait()` é chamado fora do lock de estado antes de iniciar a captura seguinte.
+
+Falhas no start limpam as referências e fazem rollback da janela anterior quando possível. A troca é centralizada em `switch_window()`, e `stop()` é idempotente.
+
+Os testes de concorrência ficam em `tests/test_capture_session.py` e cobrem os cenários críticos de inicialização, troca, callbacks atrasados, rollback e shutdown.
+
+## 🖥️ Interface gráfica
+
+A partir da versão GUI, o controle principal pode ser feito pelo aplicativo PySide6, sem depender dos comandos do terminal.
+
+A interface permite:
+
+- selecionar o monitor/TV de saída;
+- listar e selecionar a janela que será transmitida;
+- iniciar a transmissão;
+- trocar a janela durante a transmissão;
+- parar a transmissão sem encerrar o aplicativo;
+- atualizar a lista de monitores e janelas;
+- bloquear ou liberar o mouse;
+- visualizar o status atual da transmissão.
+
+A captura continua sendo controlada pela mesma `CaptureSession` utilizada anteriormente. A GUI não cria uma segunda implementação de captura.
+
+As operações de início, troca e parada são executadas fora da thread visual para evitar que a interface congele enquanto a captura nativa é encerrada ou iniciada.
+
+### Fluxo da GUI
+
+```text
+Abrir aplicativo
+      ↓
+Selecionar monitor/TV
+      ↓
+Selecionar janela
+      ↓
+Transmitir
+      ↓
+┌───────────────────────────┐
+│        TRANSMITINDO       │
+│                           │
+│ Janela: Google Chrome     │
+│ Saída: TV HDMI            │
+└───────────────────────────┘
+      ↓
+Selecionar outra janela
+      ↓
+Troca segura da captura
+```
+
+A saída fullscreen permanece separada da janela de controle. Quando a transmissão está parada, a saída permanece oculta para não cobrir a interface principal.
+
+## ⌨️ Atalhos
+
+O bloqueio do mouse continua podendo ser alternado pelo atalho global:
 
 ```text
 Ctrl + Alt + F12
 ```
 
-permite alternar o bloqueio sem depender do foco do terminal.
+O ponteiro continua confinado ao monitor principal e, quando `cursor_capture` está habilitado, o cursor pode aparecer dentro da imagem capturada enviada para a TV.
 
----
 
-# 🏗️ Estrutura do projeto
+## Correção v10
+A inicialização do `WindowsCapture` é feita no thread principal do Qt, preservando o mesmo contexto usado pela versão funcional anterior. O `start_free_threaded()` da biblioteca continua sendo responsável pela thread nativa da captura.
 
-```text
-espelhamento-hdmi/
-│
-├── app/
-│   ├── main.py
-│   │
-│   ├── windows/
-│   │   ├── monitor_manager.py
-│   │   └── window_manager.py
-│   │
-│   ├── video/
-│   │   └── session.py
-│   │
-│   ├── input/
-│   │   └── mouse_lock.py
-│   │
-│   ├── audio/
-│   │   ├── process_capture.py
-│   │   ├── audio_output.py
-│   │   └── audio_devices.py
-│   │
-│   └── config/
-│       └── settings.py
-│
-├── tests/
-│   └── test_capture_session.py
-│
-├── config.json
-├── requirements.txt
-├── install.bat
-├── run.bat
-├── build.bat
-├── README.md
-└── LICENSE
-```
+## Cursor na saída
 
----
-
-# 🧩 Principais componentes
-
-## `app/main.py`
-
-É o ponto de entrada da aplicação.
-
-Responsável por:
-
-* selecionar o monitor;
-* selecionar a janela;
-* criar a sessão de captura;
-* iniciar o controle do mouse;
-* processar os comandos do terminal;
-* executar o loop da aplicação.
-
----
-
-## `app/video/session.py`
-
-É o componente central da transmissão.
-
-A classe `CaptureSession` funciona como a **fonte única de verdade** sobre a captura atualmente ativa.
-
-Ela controla:
-
-* início da captura;
-* parada da captura;
-* troca de janela;
-* geração da captura;
-* callbacks;
-* estado atual;
-* recuperação após falhas;
-* encerramento seguro.
-
-### Estados
-
-A sessão utiliza uma máquina de estados:
-
-```text
-STOPPED
-   │
-   ▼
-STARTING
-   │
-   ▼
-RUNNING
-   │
-   ▼
-SWITCHING
-   │
-   ▼
-STOPPING
-   │
-   ▼
-RUNNING
-```
-
-Em caso de erro:
-
-```text
-FAILED
-```
-
-E no encerramento:
-
-```text
-CLOSED
-```
-
----
-
-# 🔄 Segurança durante a troca de janela
-
-A troca de janela é uma das partes mais sensíveis da aplicação.
-
-O projeto evita manter duas capturas nativas simultaneamente.
-
-O fluxo é aproximadamente:
-
-```text
-Captura A
-   │
-   ▼
-invalidar geração A
-   │
-   ▼
-parar A
-   │
-   ▼
-wait() em A
-   │
-   ▼
-criar captura B
-   │
-   ▼
-registrar B como captura atual
-   │
-   ▼
-start_free_threaded()
-   │
-   ▼
-Captura B
-```
-
-Isso é importante porque callbacks do `windows-capture` podem ocorrer em momentos inesperados durante o início e encerramento da captura.
-
-## Generation Token
-
-Cada captura recebe uma geração.
-
-Por exemplo:
-
-```text
-Captura A → geração 1
-Captura B → geração 2
-Captura C → geração 3
-```
-
-Se um callback antigo da captura A chegar depois que a captura B já estiver ativa, ele será ignorado.
-
-Isso impede que uma captura antiga:
-
-* altere o estado atual;
-* substitua o frame atual;
-* encerre a nova captura;
-* limpe referências da captura atual.
-
----
-
-# 🔒 Controle de concorrência
-
-A aplicação utiliza dois mecanismos de sincronização:
-
-### State Lock
-
-Protege alterações rápidas no estado interno.
-
-```text
-_state_lock
-```
-
-Esse lock não é mantido durante operações nativas potencialmente bloqueantes.
-
-### Operation Lock
-
-Serializa operações como:
-
-```text
-start()
-switch()
-stop()
-```
-
-Isso evita situações como:
-
-```text
-T
-T
-T
-```
-
-gerando várias trocas simultâneas.
-
-As operações são processadas de forma serializada.
-
----
-
-# 🧪 Testes
-
-Os testes ficam em:
-
-```text
-tests/test_capture_session.py
-```
-
-Para executar:
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-Os testes cobrem, entre outros:
-
-* início da captura;
-* callback imediato após o início;
-* callback antigo depois de uma troca;
-* `on_closed` de uma captura antiga;
-* falha ao iniciar uma captura;
-* rollback para a janela anterior;
-* parada idempotente;
-* troca aguardando o encerramento da captura anterior;
-* duas trocas concorrentes;
-* garantia de que duas capturas nativas não ficam ativas simultaneamente.
-
----
-
-# 🛠️ Validação do projeto
-
-Antes de executar no Windows, é possível verificar a compilação sintática:
-
-```bash
-python -m compileall -q app tests
-```
-
-O projeto também evita o uso de:
-
-```python
-time.sleep()
-```
-
-como mecanismo de sincronização da captura.
-
-A sincronização da troca é feita através dos controles e estados da própria sessão.
-
----
-
-# 📺 Configuração de múltiplos monitores
-
-O projeto foi pensado para o seguinte cenário:
-
-```text
-┌──────────────────────┐      HDMI      ┌──────────────────────┐
-│                      │                │                      │
-│   Monitor principal  │───────────────▶│      TV / Monitor    │
-│                      │                │       secundário     │
-│   Windows / controle │                │     fullscreen       │
-│                      │                │                      │
-└──────────────────────┘                └──────────────────────┘
-```
-
-O Windows deve estar em:
-
-```text
-Estender estas telas
-```
-
-e não em:
-
-```text
-Duplicar estas telas
-```
-
----
-
-# ⚠️ Limitações atuais
-
-## Áudio
-
-A estrutura do projeto possui módulos relacionados a áudio, porém a captura de áudio **por processo utilizando WASAPI Process Loopback** ainda não está implementada como parte funcional da transmissão.
-
-Atualmente o foco principal é:
-
-```text
-Captura de vídeo
-+
-Exibição fullscreen
-+
-Troca dinâmica de janela
-+
-Controle do mouse
-```
-
----
-
-## Windows
-
-O projeto depende de APIs específicas do Windows, principalmente:
-
-* Windows Graphics Capture
-* Win32 API
-* `ClipCursor`
-* HWND
-* WASAPI
-
-Portanto, o projeto não foi desenvolvido para Linux ou macOS.
-
----
-
-# 📦 Gerando um executável
-
-O projeto possui um script:
-
-```cmd
-build.bat
-```
-
-que pode ser utilizado para gerar uma versão distribuível utilizando PyInstaller.
-
-Também é possível executar o PyInstaller manualmente conforme a configuração do projeto.
-
-O resultado normalmente será colocado na pasta:
-
-```text
-dist/
-```
-
----
-
-# ⚙️ Configuração
-
-Algumas configurações podem ser armazenadas em:
-
-```text
-config.json
-```
-
-Exemplo:
-
-```json
-{
-    "fullscreen": true
-}
-```
-
-As configurações disponíveis podem variar conforme a versão do projeto.
-
----
-
-# 🧰 Tecnologias utilizadas
-
-| Tecnologia      | Utilização                    |
-| --------------- | ----------------------------- |
-| Python          | Linguagem principal           |
-| PySide6         | Interface e janela fullscreen |
-| NumPy           | Manipulação dos frames        |
-| OpenCV          | Processamento de imagem       |
-| windows-capture | Windows Graphics Capture      |
-| pywin32         | Integração com Win32          |
-| sounddevice     | Recursos de áudio             |
-| PyInstaller     | Geração do executável         |
-| ctypes          | Acesso à API Win32            |
-
----
-
-# 📌 Dependências principais
-
-As dependências estão definidas em:
-
-```text
-requirements.txt
-```
-
-Entre elas estão:
-
-```text
-PySide6
-numpy
-opencv-python
-windows-capture
-pywin32
-sounddevice
-```
-
----
-
-# 🚀 Roadmap
-
-Possíveis melhorias futuras:
-
-* [ ] Captura de áudio por processo via WASAPI Process Loopback
-* [ ] Interface gráfica para seleção da janela
-* [ ] Interface gráfica para seleção do monitor
-* [ ] Troca de janela sem depender do terminal
-* [ ] Atalhos configuráveis
-* [ ] Configuração de FPS
-* [ ] Configuração de resolução
-* [ ] Indicador visual durante a troca
-* [ ] Tela de configurações
-* [ ] Empacotamento completo em `.exe`
-* [ ] Inicialização automática
-* [ ] Logs em arquivo
-* [ ] Seleção automática da TV/monitor HDMI
-
----
-
-# 🐛 Problemas e contribuições
-
-Encontrou um problema?
-
-Abra uma **Issue** descrevendo:
-
-1. Versão do Windows
-2. Versão do Python
-3. GPU utilizada
-4. Quantidade de monitores
-5. Aplicação que estava sendo capturada
-6. Passos para reproduzir o problema
-7. Mensagens apresentadas no terminal
-
-Pull Requests também são bem-vindos.
-
----
-
-# 📄 Licença
-
-Este projeto está disponível sob a licença definida no arquivo:
-
-```text
-MIT
-```
-
----
-
-# 👨‍💻 Autor
-Miguel Neto
-
-Desenvolvido para realizar captura e transmissão de janelas do Windows para uma segunda tela/TV através de HDMI.
-
----
-
-## ⭐ Se este projeto foi útil
-
-Se o projeto foi útil para você, considere deixar uma ⭐ no GitHub.
-
-Isso ajuda a demonstrar interesse no projeto e incentiva futuras melhorias.
+A captura usa `cursor_capture=False`. O cursor é desenhado pela saída fullscreen somente quando o ponteiro físico está dentro da janela selecionada. Assim, mover o mouse pelo desktop ou pela GUI não faz o ponteiro aparecer na TV.

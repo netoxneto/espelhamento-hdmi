@@ -1,27 +1,44 @@
-"""Lista janelas visíveis com título e HWND válido."""
-import ctypes
-from ctypes import wintypes
-user32 = ctypes.windll.user32
-kernel32 = ctypes.windll.kernel32
+"""Enumeração das janelas de aplicativo disponíveis para captura."""
+from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def list_windows():
+    """Retorna janelas visíveis com título e HWND válido."""
+    try:
+        import win32gui
+        import win32process
+    except ImportError as exc:
+        raise RuntimeError(
+            "pywin32 não está instalado. Execute install.bat novamente."
+        ) from exc
+
     results = []
-    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
     def callback(hwnd, _):
-        if not user32.IsWindowVisible(hwnd):
+        if not win32gui.IsWindowVisible(hwnd):
             return True
-        length = user32.GetWindowTextLengthW(hwnd)
-        if length <= 0:
-            return True
-        title_buf = ctypes.create_unicode_buffer(length + 1)
-        user32.GetWindowTextW(hwnd, title_buf, length + 1)
-        title = title_buf.value.strip()
+
+        title = win32gui.GetWindowText(hwnd).strip()
         if not title:
             return True
-        pid = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        results.append({"hwnd": int(hwnd), "title": title, "pid": pid.value})
+
+        # Janelas minimizadas continuam sendo selecionáveis; janelas de
+        # ferramenta sem título não entram por causa do filtro acima.
+        _thread_id, pid = win32process.GetWindowThreadProcessId(hwnd)
+        results.append(
+            {
+                "hwnd": int(hwnd),
+                "title": title,
+                "pid": int(pid),
+            }
+        )
         return True
-    user32.EnumWindows(callback_type(callback), 0)
-    results.sort(key=lambda x: x["title"].casefold())
+
+    win32gui.EnumWindows(callback, None)
+    results.sort(key=lambda item: item["title"].casefold())
+    logger.info("Janelas visíveis encontradas: %d", len(results))
     return results

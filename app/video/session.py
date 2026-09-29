@@ -8,8 +8,8 @@ import threading
 import cv2
 import numpy as np
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QImage, QPixmap, QCursor
-from PySide6.QtWidgets import QApplication, QLabel, QWidget
+from PySide6.QtGui import QImage, QCursor
+from PySide6.QtWidgets import QApplication, QWidget
 
 
 logger = logging.getLogger(__name__)
@@ -26,54 +26,226 @@ class CaptureState(Enum):
 
 
 class FullscreenOutput(QWidget):
+    """Janela de saída dedicada; o frame é desenhado diretamente pelo Qt."""
+
     def __init__(self, monitor, fps=30):
         super().__init__()
         self.monitor = monitor
-        self.label = QLabel(self)
-        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.label.setStyleSheet("background: black;")
-        self.label.setCursor(QCursor(Qt.CursorShape.BlankCursor))
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
         )
-        self.setGeometry(monitor["left"], monitor["top"], monitor["width"], monitor["height"])
-        self.label.setGeometry(0, 0, monitor["width"], monitor["height"])
-        self.setStyleSheet("background: black;")
-        self.showFullScreen()
+        if hasattr(self, "setAttribute"):
+            self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+            self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        if hasattr(self, "setCursor"):
+            self.setCursor(QCursor(Qt.CursorShape.BlankCursor))
+        self._source_hwnd = None
         self._frame = None
+        self._image = QImage()
         self._lock = threading.Lock()
+        self._frame_count = 0
+        self._last_shape = None
+        self.setStyleSheet("background: black;")
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(max(1, int(1000 / fps)))
+        self._apply_monitor_geometry()
+
+    def _find_target_screen(self):
+        screens_fn = getattr(QApplication, "screens", None)
+        if not callable(screens_fn):
+            return None
+        screens = screens_fn()
+        target_name = self.monitor.get("name")
+        if target_name:
+            for screen in screens:
+                if screen.name() == target_name:
+                    return screen
+
+        target_rect = (
+            int(self.monitor["left"]), int(self.monitor["top"]),
+            int(self.monitor["width"]), int(self.monitor["height"]),
+        )
+        for screen in screens:
+            g = screen.geometry()
+            if (g.x(), g.y(), g.width(), g.height()) == target_rect:
+                return screen
+        return None
+
+    def _apply_monitor_geometry(self):
+        screen = self._find_target_screen()
+        if screen is not None:
+            g = screen.geometry()
+            self.setGeometry(g)
+        else:
+            self.setGeometry(
+                int(self.monitor["left"]), int(self.monitor["top"]),
+                int(self.monitor["width"]), int(self.monitor["height"]),
+            )
+
+    def set_source_window(self, selected):
+        self._source_hwnd = int(selected.get("hwnd")) if selected and selected.get("hwnd") else None
 
     def set_frame(self, frame):
         with self._lock:
             self._frame = frame.copy()
+            self._frame_count += 1
+            self._last_shape = tuple(self._frame.shape)
+
+    @property
+    def frame_count(self):
+        with self._lock:
+            return self._frame_count
+
+    @property
+    def last_shape(self):
+        with self._lock:
+            return self._last_shape
 
     def clear(self):
         with self._lock:
             self._frame = None
-        self.label.clear()
+            self._image = QImage()
+        self.update()
+
+    def show_output(self):
+        screen = self._find_target_screen()
+        # O QWindow precisa existir para setScreen(); mostrar como janela normal
+        # primeiro garante que o native window seja criado no Windows.
+        if not self.isVisible():
+            self.show()
+        handle = self.windowHandle()
+        if handle is not None and screen is not None:
+            handle.setScreen(screen)
+            g = screen.geometry()
+            self.setGeometry(g)
+        else:
+            self._apply_monitor_geometry()
+        self.showFullScreen()
+        self.raise_()
+        self.activateWindow()
+        self.update()
+
+    def hide_output(self):
+        self.hide()
 
     def refresh(self):
         with self._lock:
             frame = None if self._frame is None else self._frame.copy()
         if frame is None:
             return
+
         h, w = frame.shape[:2]
+        if frame.ndim != 3 or frame.shape[2] not in (3, 4):
+            return
+
+        # windows-capture entrega BGRA/BGR. A saída é armazenada como RGB sem
+        # alpha para que nenhuma composição/transparência do Qt possa apagar o frame.
         if frame.shape[2] == 4:
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGRA2RGBA)
-            fmt = QImage.Format.Format_RGBA8888
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGRA2RGB)
         else:
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            fmt = QImage.Format.Format_RGB888
-        image = QImage(rgb.data, w, h, rgb.strides[0], fmt).copy()
-        pix = QPixmap.fromImage(image).scaled(
-            self.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self.label.setPixmap(pix)
+        image = QImage(
+            rgb.data, w, h, rgb.strides[0], QImage.Format.Format_RGB888
+        ).copy()
+        with self._lock:
+            self._image = image
+        self.update()
+
+    def paintEvent(self, event):
+        from PySide6.QtGui import QPainter
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), Qt.GlobalColor.black)
+        with self._lock:
+            image = self._image.copy() if not self._image.isNull() else QImage()
+        if not image.isNull():
+            scaled = image.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            x = (self.width() - scaled.width()) // 2
+            y = (self.height() - scaled.height()) // 2
+            painter.drawImage(x, y, scaled)
+        self._paint_source_cursor(painter, image, scaled, x, y)
+        painter.end()
+
+    def _paint_source_cursor(self, painter, image, scaled, x, y):
+        """Desenha um cursor somente quando o mouse está sobre a janela capturada.
+
+        O cursor não é mais embutido pelo Windows Graphics Capture. Assim,
+        mover o mouse pelo desktop/GUI não faz o ponteiro aparecer na TV.
+        """
+        hwnd = self._source_hwnd
+        if not hwnd:
+            return
+        try:
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+
+            class POINT(ctypes.Structure):
+                _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+            class RECT(ctypes.Structure):
+                _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG),
+                            ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
+
+            pt = POINT()
+            rect = RECT()
+
+            # A posição do mouse sozinha não determina se ele pertence à
+            # janela transmitida. Ex.: o Word continua sendo capturado
+            # enquanto o usuário opera o Chrome. Nesse caso o ponteiro do
+            # Chrome NÃO deve ser desenhado sobre o frame do Word.
+            foreground = user32.GetForegroundWindow()
+            if not foreground:
+                return
+
+            # Normaliza para a janela raiz para funcionar também quando o
+            # foco estiver em um controle/filho dentro do aplicativo.
+            GA_ROOT = 2
+            foreground_root = user32.GetAncestor(foreground, GA_ROOT)
+            source_root = user32.GetAncestor(hwnd, GA_ROOT)
+            if foreground_root and source_root and foreground_root != source_root:
+                return
+
+            if not user32.GetCursorPos(ctypes.byref(pt)):
+                return
+            if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                return
+
+            ww = rect.right - rect.left
+            wh = rect.bottom - rect.top
+            if ww <= 0 or wh <= 0:
+                return
+            if not (rect.left <= pt.x < rect.right and rect.top <= pt.y < rect.bottom):
+                return
+
+            # A imagem mantém a proporção da captura. Mapeamos a posição do
+            # cursor da janela-fonte para o retângulo efetivamente desenhado.
+            sx = (pt.x - rect.left) / ww
+            sy = (pt.y - rect.top) / wh
+            cx = x + sx * scaled.width()
+            cy = y + sy * scaled.height()
+
+            from PySide6.QtCore import QPointF
+            from PySide6.QtGui import QPolygonF, QPen, QBrush
+            points = [
+                QPointF(cx, cy),
+                QPointF(cx, cy + 24),
+                QPointF(cx + 6, cy + 18),
+                QPointF(cx + 12, cy + 30),
+                QPointF(cx + 17, cy + 28),
+                QPointF(cx + 11, cy + 16),
+                QPointF(cx + 20, cy + 16),
+            ]
+            painter.setPen(QPen(Qt.GlobalColor.black, 2))
+            painter.setBrush(QBrush(Qt.GlobalColor.white))
+            painter.drawPolygon(QPolygonF(points))
+        except Exception:
+            # Cursor é apenas um complemento visual; falhar aqui nunca pode
+            # interromper a apresentação dos frames.
+            return
 
 
 class CaptureSession:
@@ -117,6 +289,10 @@ class CaptureSession:
             raise RuntimeError("Biblioteca windows-capture ausente. Execute install.bat.") from exc
 
         kwargs = {
+            # O cursor é desenhado pela FullscreenOutput somente quando o
+            # ponteiro está dentro da janela capturada. Isso evita que o
+            # ponteiro do desktop apareça na TV quando o usuário estiver
+            # operando fora da janela transmitida.
             "cursor_capture": False,
             "draw_border": False,
         }
@@ -304,6 +480,7 @@ class CaptureSession:
             self.capture = new_capture
             self.capture_control = None
             self.selected = selected
+        self.output.set_source_window(selected)
 
         try:
             new_control = new_capture.start_free_threaded()
@@ -330,6 +507,43 @@ class CaptureSession:
             return
 
         print(f"\nTransmitindo agora: {selected['title']} (PID {selected['pid']})")
+
+    def set_monitor(self, monitor):
+        """Move the output window to a new monitor while stopped."""
+        with self._operation_lock:
+            with self._state_lock:
+                if self._closed:
+                    raise RuntimeError("A sessão já foi encerrada.")
+                if self._state not in (CaptureState.STOPPED, CaptureState.FAILED):
+                    raise RuntimeError("Pare a transmissão antes de trocar o monitor de saída.")
+                self.monitor = monitor
+                old_output = self.output
+                self.output = FullscreenOutput(monitor, fps=self.fps)
+            try:
+                old_output.close()
+            except Exception:
+                pass
+
+    def stop_capture(self):
+        """Para a captura atual, mas mantém a sessão disponível para novo start."""
+        with self._operation_lock:
+            with self._state_lock:
+                if self._closed:
+                    return
+                self._generation += 1
+                self._state = CaptureState.STOPPING
+                capture = self.capture
+                control = self.capture_control
+                self.capture = None
+                self.capture_control = None
+                self.selected = None
+
+            self._stop_capture(capture, control)
+            self.output.clear()
+            self.output.hide_output()
+            with self._state_lock:
+                if not self._closed:
+                    self._state = CaptureState.STOPPED
 
     def start(self, selected):
         if not selected:
@@ -382,6 +596,7 @@ class CaptureSession:
             self.output.close()
 
     def run(self):
+        self.output.show_output()
         if self.mouse_lock:
             self.mouse_lock.activate()
         self.app.exec()
